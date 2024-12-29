@@ -32,6 +32,7 @@ def create_app():
         filename = file_chunk.filename
         chunk_index = int(request.form['chunkIndex'])
         total_chunks = int(request.form['totalChunks'])
+        upload_id = request.form['uploadId']
 
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
@@ -41,10 +42,11 @@ def create_app():
 
         # Emitovanje progres upload-a
         progress = int((chunk_index + 1) / total_chunks * 100)
-        socketio.emit('status', {'status': 'upload_progress', 'progress': progress})
+        socketio.emit('status', {'uploadId': upload_id, 'status': 'upload_progress', 'progress': progress})
 
         # Ako je poslednji deo fajla primljen, poziva se funkcija za zipovanje fajla
         if chunk_index + 1 == total_chunks:
+            socketio.emit('status', {'uploadId': upload_id, 'status': 'upload_completed'})
             zip_path = get_unique_zip_path(app.config['ZIP_FOLDER'], filename)
             chunked_zip(file_path, zip_path, socketio)
             socketio.emit('file_list_updated')
@@ -63,6 +65,7 @@ def create_app():
 
     def chunked_zip(input_file, output_zip, socketio):
         '''Funkcija koja zipuje fajl u delovima'''
+        upload_id = request.form['uploadId']
         CHUNK_SIZE = 1024 * 1024
         # Otvaranje ZIP fajla u write modu i upisivanje delova fajla u ZIP
         with zipfile.ZipFile(output_zip, 'w', zipfile.ZIP_DEFLATED) as zf:
@@ -79,13 +82,13 @@ def create_app():
                         bytes_written += len(chunk)
                         progress = (bytes_written / total_size) * 100
                         # Emitovanje progresa zipovanja u procentima
-                        socketio.emit('status', {'status': 'zip_progress', 'progress': progress})
+                        socketio.emit('status', {'uploadId': upload_id, 'status': 'zip_progress', 'progress': progress})
                         # Pauziranje izvršavanja programa na 0.2 sekunde kako bi se mogao pratiti progres
                         time.sleep(0.2)
                         # Čitamo sledeći segment
                         chunk = f.read(CHUNK_SIZE)  
 
-        socketio.emit('status', {'status': 'zip_completed'})
+        socketio.emit('status', {'uploadId': upload_id, 'status': 'zip_completed'})
 
     @app.route('/download/<filename>', methods=['GET'])
     def download_file(filename):
